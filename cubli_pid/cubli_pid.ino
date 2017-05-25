@@ -1,12 +1,18 @@
 #include "PID_v1.h"
 #include "MPU6050.h"
+#include <Servo.h>
 
 //Define Variables we'll be connecting to
 double Setpoint, Input, Output;
 
+Servo firstESC, secondESC;
+
+/*int buttonPin = 1;
+int buttonState = 0;*/
+
 //Define the aggressive and conservative Tuning Parameters
 double aggKp=4, aggKi=0.2, aggKd=1;
-double consKp=1, consKi=0.05, consKd=0.25;
+double consKp=1, consKi=0, consKd=0.25;
 
 //Specify the links and initial tuning parameters
 PID myPID(&Input, &Output, &Setpoint, consKp, consKi, consKd, DIRECT);
@@ -17,9 +23,10 @@ void setup() {
    ***********************************/
   int error;
   uint8_t c;
+  //pinMode(buttonPin, INPUT);
 
-  Serial.begin(250000);
-  Serial.println(F("InvenSense MPU-6050"));
+  /*Serial.begin(9600);
+  Serial.println(F("InvenSense MPU-6050"));*/
 
   // Initialize the 'Wire' class for the I2C-bus.
   Wire.begin();
@@ -33,33 +40,69 @@ void setup() {
   //
 
   error = MPU6050_read (MPU6050_WHO_AM_I, &c, 1);
-  Serial.print(F("WHO_AM_I : "));
+  /*Serial.print(F("WHO_AM_I : "));
   Serial.print(c,HEX);
   Serial.print(F(", error = "));
-  Serial.println(error,DEC);
+  Serial.println(error,DEC);*/
 
   // According to the datasheet, the 'sleep' bit
   // should read a '1'.
   // That bit has to be cleared, since the sensor
   // is in sleep mode at power-up. 
   error = MPU6050_read (MPU6050_PWR_MGMT_1, &c, 1);
-  Serial.print(F("PWR_MGMT_1 : "));
+  /*Serial.print(F("PWR_MGMT_1 : "));
   Serial.print(c,HEX);
   Serial.print(F(", error = "));
-  Serial.println(error,DEC);
+  Serial.println(error,DEC);*/
 
 
   // Clear the 'sleep' bit to start the sensor.
   MPU6050_write_reg (MPU6050_PWR_MGMT_1, 0);
+
+  /***********************************
+   *            ESC setup            *
+   ***********************************/
+  Serial.begin(9600);
+  firstESC.attach(8);
+  //secondESC.attach(9);
+  /*firstESC.writeMicroseconds(0);
+  delay(2000);
+  firstESC.writeMicroseconds(2000); //Setup ESCs with max and min throttle settings
+  //secondESC.writeMicroseconds(2000);
+  delay(3000); //Delay is fine in the setup sequence, nothing to block.
+  firstESC.writeMicroseconds(1000);
+  //secondESC.writeMicroseconds(1000);
+  delay(3000);
+  firstESC.writeMicroseconds(0);
+  //secondESC.writeMicroseconds(0);
+  delay(1000);*/
+
+  myPID.SetOutputLimits(1100,1600);
+  myPID.SetMode(AUTOMATIC);
+
+  /***********************************
+   *   Setup initial cube position   *
+   ***********************************/
+
+  Setpoint = -620;
+  int value = 0;
+  while(true) {
+    if(Serial.available()) { 
+      value = Serial.parseInt();
+    }
+    if(value == 6969) {
+      break;
+    } else {
+      firstESC.writeMicroseconds(value);
+    }
+  }
+  firstESC.writeMicroseconds(1100);
+  delay(1000);
 }
 
 void loop() {
   int error;
   accel_t_gyro_union accel_t_gyro;
-
-
-  Serial.println(F(""));
-  Serial.println(F("MPU-6050"));
 
   // Read the raw values.
   // Read 14 bytes at once, 
@@ -68,8 +111,8 @@ void loop() {
   // there is no filter enabled, and the values
   // are not very stable.
   error = MPU6050_read (MPU6050_ACCEL_XOUT_H, (uint8_t *) &accel_t_gyro, sizeof(accel_t_gyro));
-  Serial.print(F("Read accel and gyro, error = "));
-  Serial.println(error,DEC);
+  //Serial.print(F("Read accel and gyro, error = "));
+  //Serial.println(error,DEC);
 
 
   // Swap all high and low bytes.
@@ -86,6 +129,12 @@ void loop() {
   SWAP (accel_t_gyro.reg.x_gyro_h, accel_t_gyro.reg.x_gyro_l);
   SWAP (accel_t_gyro.reg.y_gyro_h, accel_t_gyro.reg.y_gyro_l);
   SWAP (accel_t_gyro.reg.z_gyro_h, accel_t_gyro.reg.z_gyro_l);
+
+  
+  Input = accel_t_gyro.value.x_gyro;
+  myPID.Compute();
+  firstESC.writeMicroseconds(Output);
+  delay(10);
 }
 
 /**************************************
